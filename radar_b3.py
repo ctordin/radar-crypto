@@ -11,7 +11,7 @@ st.set_page_config(page_title="Radar de Ações B3", layout="wide")
 
 # Você pode adicionar quantas ações quiser aqui, lembrando sempre do sufixo ".SA"
 LISTA_ACOES = [
-    'PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'MULT3.SA',
+    'PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'MGLU3.SA', 'MULT3.SA',
     'WEGE3.SA', 'ABEV3.SA', 'RENT3.SA', 'SUZB3.SA', 'MDNE3.SA',
     'ALOS3.SA' # <-- Sua nova ação foi adicionada aqui!
 ]
