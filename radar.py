@@ -1,96 +1,79 @@
-import yfinance as yf
 import pandas as pd
 import streamlit as st
+import requests
 from datetime import datetime
+import time
 
-st.set_page_config(page_title="Radar Crypto - Master", layout="wide")
+st.set_page_config(page_title="Radar Crypto OKX", layout="wide")
 
-# Lista ajustada para maior estabilidade no yfinance
-CRIPTOS = [
-    "BTC-USD", "ETH-USD", "SOL-USD", "ADA-USD", "DOT-USD", 
-    "LINK-USD", "AVAX-USD", "NEAR-USD"
-]
+# Lista de pares na OKX (formato Instrument ID)
+CRIPTOS = ["BTC-USDT", "ETH-USDT", "SOL-USDT", "ADA-USDT", "DOT-USDT", "LINK-USDT", "AVAX-USDT", "NEAR-USDT"]
 
-def analisar_crypto(ticker_symbol):
+def get_okx_data(instId):
     try:
-        crypto = yf.Ticker(ticker_symbol)
-        # Aumentamos o período para garantir que a média móvel seja calculada
-        hist = crypto.history(period="90d")
+        # Puxando Ticker (Preço e Volume 24h)
+        url_ticker = f"https://www.okx.com/api/v5/market/ticker?instId={instId}"
+        res = requests.get(url_ticker).json()
         
-        if hist.empty or len(hist) < 20:
-            return {"Ativo": ticker_symbol, "Status": "ERRO", "Análise": "Sem histórico suficiente"}
-
-        info = crypto.info
-        # Usamos .get(key, default) para evitar que o código quebre se o dado sumir
-        mkt_cap = info.get('marketCap', 1)
-        vol_24h = info.get('volume24Hr', info.get('volume', 0))
-        circulating = info.get('circulatingSupply', 0)
-        max_supply = info.get('maxSupply', 0)
+        if res['code'] != '0': return None
+        data = res['data'][0]
         
-        preco_atual = hist['Close'].iloc[-1]
-        media_20 = hist['Close'].rolling(window=20).mean().iloc[-1]
+        last_price = float(data['last'])
+        vol_24h = float(data['vol24h']) * last_price # Volume em USDT
         
-        # Cálculo de Liquidez
-        giro_diario = (vol_24h / mkt_cap) * 100 if mkt_cap > 1 else 0
-        liquidez_ok = giro_diario > 2.0
+        # Puxando Histórico (Candles de 1 dia para Média Móvel)
+        url_history = f"https://www.okx.com/api/v5/market/candles?instId={instId}&bar=1D&limit=20"
+        res_h = requests.get(url_history).json()
         
-        # Cálculo de Diluição
-        if max_supply and max_supply > 0:
-            percentual_circulante = (circulating / max_supply) * 100
-            diluicao_ok = percentual_circulante > 50.0
+        if res_h['code'] == '0':
+            candles = res_h['data']
+            precos_fechamento = [float(c[4]) for c in candles]
+            media_20 = sum(precos_fechamento) / len(precos_fechamento)
         else:
-            percentual_circulante = 100.0
-            diluicao_ok = True
+            media_20 = last_price
 
-        fundamentos_ok = liquidez_ok and diluicao_ok
+        # Filtro de Liquidez (Mínimo 5M USDT de volume diário para Altcoins)
+        liquidez_ok = vol_24h > 5000000 
         
-        if fundamentos_ok:
-            if preco_atual > media_20:
-                status = "COMPRA"
-                motivo = "Fundamentos OK + Tendência Alta"
-            else:
-                status = "AGUARDAR"
-                motivo = "Abaixo da Média de 20 dias"
+        if last_price > media_20 and liquidez_ok:
+            status = "COMPRA"
+            motivo = "Tendência Alta + Alta Liquidez"
+        elif liquidez_ok:
+            status = "AGUARDAR"
+            motivo = "Abaixo da Média (Aguardar Reversão)"
         else:
             status = "FORA DE FILTRO"
-            detalhe = "Baixa Liquidez" if not liquidez_ok else "Alta Diluição"
-            motivo = f"Risco: {detalhe} ({percentual_circulante:.1f}%)"
-            
+            motivo = "Baixa Liquidez na Exchange"
+
         return {
-            "Ativo": ticker_symbol.replace("-USD", ""),
-            "Preço (USD)": round(preco_atual, 4),
-            "Giro (%)": round(giro_diario, 2),
-            "Circ. (%)": round(percentual_circulante, 1),
+            "Ativo": instId.replace("-USDT", ""),
+            "Preço (USDT)": last_price,
+            "Volume 24h": f"{vol_24h/1e6:.1f}M",
             "Status": status,
             "Análise": motivo
         }
     except Exception as e:
-        return {"Ativo": ticker_symbol, "Status": "ERRO", "Análise": f"Falha na API: {str(e)}"}
+        return {"Ativo": instId, "Status": "ERRO", "Análise": str(e)}
 
 # INTERFACE
-st.title("₿ Radar Crypto Quantamental")
+st.title("₿ Radar Crypto via OKX API")
+st.caption("Conexão direta com a Exchange - Sem limites de requisição do Yahoo")
 
-if st.button('Executar Scanner de Mercado'):
+if st.button('Escanear OKX'):
     resultados = []
     progresso = st.progress(0)
     
-    for i, ticker in enumerate(CRIPTOS):
-        res = analisar_crypto(ticker)
-        if res:
-            resultados.append(res)
+    for i, inst in enumerate(CRIPTOS):
+        res = get_okx_data(inst)
+        if res: resultados.append(res)
+        time.sleep(0.2) # Delay mínimo apenas por segurança
         progresso.progress((i + 1) / len(CRIPTOS))
     
-    if resultados:
-        df = pd.DataFrame(resultados)
-        
-        def highlight_status(val):
-            if val == 'COMPRA': return 'background-color: #c8e6c9; color: #1b5e20; font-weight: bold'
-            if val == 'AGUARDAR': return 'background-color: #fff9c4; color: #f57f17; font-weight: bold'
-            if val == 'FORA DE FILTRO': return 'background-color: #ffcdd2; color: #b71c1c; font-weight: bold'
-            return ''
+    df = pd.DataFrame(resultados)
+    
+    def highlight(val):
+        if val == 'COMPRA': return 'background-color: #c8e6c9; color: #1b5e20; font-weight: bold'
+        if val == 'AGUARDAR': return 'background-color: #fff9c4; color: #f57f17; font-weight: bold'
+        return ''
 
-        st.dataframe(df.style.map(highlight_status, subset=['Status']), use_container_width=True)
-    else:
-        st.warning("A API do Yahoo retornou vazio. Tente novamente em alguns segundos.")
-
-st.sidebar.caption(f"Último Check: {datetime.now().strftime('%H:%M:%S')}")
+    st.dataframe(df.style.map(highlight, subset=['Status']), use_container_width=True)
