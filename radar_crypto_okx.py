@@ -10,7 +10,7 @@ st.set_page_config(page_title="Radar Crypto - Fundamentalista", layout="wide")
 CRIPTOS = [
     "BTC-USD", "ETH-USD", "SOL-USD", "ENJ-USD", "DOT-USD", 
     "DOGE-USD", "LINK-USD", "RESOLV-USD", "SAFE-USD", "XRP-USD", 
-    "KITE-USD", "KAITO-USD", "OMI-USD"
+    "KITE-USD", "KAITO-USD", "OMI-USDT", "SPACE-USDT",
 ]
 
 def analisar_crypto(ticker_symbol):
