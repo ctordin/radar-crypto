@@ -9,9 +9,9 @@ st.set_page_config(page_title="Radar B3 - Quantamental", layout="wide")
 
 # Lista dos 11 ativos para monitoramento
 ATIVOS = [
-    "MGLU3.SA", "PETR4.SA", "VALE3.SA", "ITUB4.SA", 
-    "ABEV3.SA", "WEGE3.SA", "BBAS3.SA", "RENT3.SA", 
-    "B3SA3.SA", "HAPV3.SA", "VBBR3.SA"
+    'PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'MGLU3.SA', 'MULT3.SA',
+    'WEGE3.SA', 'ABEV3.SA', 'RENT3.SA', 'SUZB3.SA', 'MDNE3.SA',
+    'ALOS3.SA'
 ]
 
 def analisar_ativo(ticker_symbol):
