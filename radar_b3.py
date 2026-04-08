@@ -4,97 +4,67 @@ import streamlit as st
 import time
 from datetime import datetime
 
-# ==========================================
-# 1. CONFIGURAÇÕES DA INTERFACE (B3)
-# ==========================================
-st.set_page_config(page_title="Radar de Ações B3", layout="wide")
-
-# Você pode adicionar quantas ações quiser aqui, lembrando sempre do sufixo ".SA"
-LISTA_ACOES = [
-    'PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'MGLU3.SA', 'MULT3.SA',
-    'WEGE3.SA', 'ABEV3.SA', 'RENT3.SA', 'SUZB3.SA', 'MDNE3.SA',
-    'ALOS3.SA' # <-- Sua nova ação foi adicionada aqui!
+# Lista dos 11 ativos para monitoramento
+ATIVOS = [
+    "MGLU3.SA", "PETR4.SA", "VALE3.SA", "ITUB4.SA", 
+    "ABEV3.SA", "WEGE3.SA", "BBAS3.SA", "RENT3.SA", 
+    "B3SA3.SA", "HAPV3.SA", "VBBR3.SA"
 ]
 
-# ==========================================
-# 2. MOTOR DE ANÁLISE (O Cérebro Adaptado para Ações)
-# ==========================================
-def analisar_acao(ticker):
+def analisar_ativo(ticker_symbol):
     try:
-        macro_data = yf.Ticker(ticker).history(period='2y', interval='1wk')
-        if macro_data.empty: raise ValueError("Sem dados macro")
-        df_macro = pd.DataFrame(macro_data)
-        df_macro['sma_50'] = df_macro['Close'].rolling(window=50).mean()
-        tendencia_alta = df_macro.iloc[-1]['Close'] > df_macro.iloc[-1]['sma_50']
+        ativo = yf.Ticker(ticker_symbol)
+        # Busca dados históricos para a parte técnica (últimos 60 dias)
+        hist = ativo.history(period="60d")
+        if hist.empty:
+            return "Erro: Dados históricos não encontrados"
 
-        micro_data = yf.Ticker(ticker).history(period='1y', interval='1d')
-        if micro_data.empty: raise ValueError("Sem dados micro")
-        df = pd.DataFrame(micro_data)
+        # 1. COLETA DE DADOS FUNDAMENTALISTAS (Pilares 1, 2 e 4)
+        info = ativo.info
+        p_vp = info.get('priceToBook', 99)
+        roe = info.get('returnOnEquity', 0)
+        divida_patrimonio = info.get('debtToEquity', 999) # em %
         
-        df['sma_rapida'] = df['Close'].rolling(window=9).mean()
-        df['sma_lenta'] = df['Close'].rolling(window=21).mean()
+        # 2. COLETA DE DADOS TÉCNICOS
+        preco_atual = hist['Close'].iloc[-1]
+        media_20 = hist['Close'].rolling(window=20).mean().iloc[-1]
         
-        delta = df['Close'].diff()
-        df['rsi'] = 100 - (100 / (1 + (delta.where(delta > 0, 0).rolling(14).mean() / -delta.where(delta < 0, 0).rolling(14).mean())))
-        df['volume_medio'] = df['Volume'].rolling(20).mean()
-        df['atr'] = (df[['High', 'Low']].max(axis=1) - df[['High', 'Low']].min(axis=1)).rolling(14).mean()
-
-        atual = df.iloc[-1]
-        anterior = df.iloc[-2]
-
-        cruz_alta = anterior['sma_rapida'] <= anterior['sma_lenta'] and atual['sma_rapida'] > atual['sma_lenta']
-        cruz_baixa = anterior['sma_rapida'] >= anterior['sma_lenta'] and atual['sma_rapida'] < atual['sma_lenta']
-        vol_ok = atual['Volume'] > atual['volume_medio']
+        # 3. FILTROS DE QUALIDADE (FUNDAMENTALISTA)
+        # Critérios: P/VP < 3.0 | ROE > 5% | Dívida/Patrimônio < 150%
+        aprovado_fundamento = (p_vp < 3.0) and (roe > 0.05) and (divida_patrimonio < 150)
         
-        recomendacao = "⚪ AGUARDAR"
-        alvo = 0.0
-
-        if tendencia_alta:
-            if cruz_alta and atual['rsi'] < 60 and vol_ok:
-                recomendacao = "🟢 ABRIR COMPRA"
-                alvo = atual['Close'] + (atual['atr'] * 3)
-            elif cruz_baixa or (anterior['rsi'] >= 70 and atual['rsi'] < 70):
-                recomendacao = "🔴 FECHAR COMPRA (Lucro/Stop)"
+        # 4. LÓGICA DO RADAR
+        if aprovado_fundamento:
+            # Se o fundamento é bom, a técnica decide o timing
+            if preco_atual > media_20:
+                status = "COMPRA"
+                motivo = "Fundamentos sólidos + Tendência de Alta"
+            else:
+                status = "AGUARDAR"
+                motivo = "Bom ativo, mas aguardando reversão técnica (Preço < MM20)"
         else:
-            if (cruz_baixa or (anterior['rsi'] >= 70 and atual['rsi'] < 70)) and vol_ok:
-                recomendacao = "🔴 ABRIR SHORT (Vendido)"
-                alvo = atual['Close'] - (atual['atr'] * 3)
-            elif cruz_alta or atual['rsi'] < 30:
-                recomendacao = "🟢 FECHAR SHORT (Recomprar)"
-
+            status = "FORA DE FILTRO"
+            motivo = f"Risco Fundamentalista (P/VP:{p_vp:.2f}, ROE:{roe*100:.1f}%, Dív:{divida_patrimonio}%)"
+            
         return {
-            "Ativo": ticker.replace('.SA', ''), 
-            "Preço (R$)": f"R$ {atual['Close']:.2f}",
-            "Macro": "ALTA" if tendencia_alta else "BAIXA",
-            "RSI (14)": f"{atual['rsi']:.1f}",
-            "Recomendação": recomendacao,
-            "Alvo TP (R$)": f"R$ {alvo:.2f}" if alvo > 0 else "-"
+            "Ticker": ticker_symbol,
+            "Preço": round(preco_atual, 2),
+            "Status": status,
+            "Motivo": motivo
         }
+
     except Exception as e:
-        return {"Ativo": ticker.replace('.SA', ''), "Recomendação": "⚠️ Erro de Leitura", "Preço (R$)": "-", "Macro": "-", "RSI (14)": "-", "Alvo TP (R$)": "-"}
+        return {"Ticker": ticker_symbol, "Status": "ERRO", "Motivo": str(e)}
 
-# ==========================================
-# 3. INTERFACE VISUAL (STREAMLIT)
-# ==========================================
-st.title("📈 Radar B3 - Swing Trade")
-st.markdown("*(Atenção: Os sinais gerados devem ser executados manualmente no Home Broker do **C6 Invest**).*")
-st.write(f"Última varredura: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-
-if st.button("🔄 Analisar Bolsa de Valores"):
-    barra_progresso = st.progress(0)
-    texto_status = st.empty()
+def executar_radar():
+    print(f"{'ATIVO':<10} | {'PREÇO':<8} | {'STATUS':<15} | {'MOTIVO'}")
+    print("-" * 80)
     
     resultados = []
-    total_ativos = len(LISTA_ACOES)
-    
-    for i, acao in enumerate(LISTA_ACOES):
-        texto_status.text(f"Baixando dados de {acao} ({i+1}/{total_ativos})...")
-        analise = analisar_acao(acao)
-        resultados.append(analise)
-        barra_progresso.progress((i + 1) / total_ativos)
-        time.sleep(0.5) 
-    
-    texto_status.text("✅ Varredura concluída!")
-    df_resultados = pd.DataFrame(resultados)
-    
-    st.dataframe(df_resultados, width='stretch', hide_index=True)
+    for ticker in ATIVOS:
+        res = analisar_ativo(ticker)
+        resultados.append(res)
+        print(f"{res['Ticker']:<10} | {res['Preço']:<8} | {res['Status']:<15} | {res['Motivo']}")
+
+if __name__ == "__main__":
+    executar_radar()
