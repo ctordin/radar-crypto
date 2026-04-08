@@ -8,8 +8,8 @@ st.set_page_config(page_title="Radar Crypto - Fundamentalista", layout="wide")
 
 # Lista de ativos
 CRIPTOS = [
-    "BTC-USD", "ETH-USD", "SOL-USD", "ADA-USD", "DOT-USD", 
-    "MDNE3-USD", "LINK-USD", "AVAX-USD", "ALGO-USD", "XRP-USD"
+    "BTC-USD", "ETH-USD", "SOL-USD", "ENJ-USD", "DOT-USD", 
+    "DOGE-USD", "LINK-USD", "RESOLV-USD", "SAFE-USD", "XRP-USD"
 ]
 
 def analisar_crypto(ticker_symbol):
